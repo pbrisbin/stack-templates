@@ -1,0 +1,920 @@
+{-# START_FILE app/devel.hs #-}
+{-# LANGUAGE PackageImports #-}
+import "{{name}}" Application (develMain)
+import Prelude (IO)
+
+main :: IO ()
+main = develMain
+{-# START_FILE app/DevelMain.hs #-}
+module DevelMain where
+
+import Prelude
+import Application (getApplicationRepl, shutdownApp)
+
+import Control.Exception (finally)
+import Control.Monad ((>=>))
+import Control.Concurrent
+import Data.IORef
+import Foreign.Store
+import Network.Wai.Handler.Warp
+import GHC.Word
+
+update :: IO ()
+update = do
+    mtidStore <- lookupStore tidStoreNum
+    case mtidStore of
+      -- no server running
+      Nothing -> do
+          done <- storeAction doneStore newEmptyMVar
+          tid <- start done
+          _ <- storeAction (Store tidStoreNum) (newIORef tid)
+          return ()
+      -- server is already running
+      Just tidStore -> restartAppInNewThread tidStore
+  where
+    doneStore :: Store (MVar ())
+    doneStore = Store 0
+
+    restartAppInNewThread :: Store (IORef ThreadId) -> IO ()
+    restartAppInNewThread tidStore = modifyStoredIORef tidStore $ \tid -> do
+        killThread tid
+        withStore doneStore takeMVar
+        readStore doneStore >>= start
+
+
+    start :: MVar () -> IO ThreadId
+    start done = do
+        (port, site, app) <- getApplicationRepl
+        forkIO (finally (runSettings (setPort port defaultSettings) app)
+                        -- Note that this implies concurrency
+                        -- between shutdownApp and the next app that is starting.
+                        -- Normally this should be fine
+                        (putMVar done () >> shutdownApp site))
+
+shutdown :: IO ()
+shutdown = do
+    mtidStore <- lookupStore tidStoreNum
+    case mtidStore of
+      Nothing -> putStrLn "no Yesod app running"
+      Just tidStore -> do
+          withStore tidStore $ readIORef >=> killThread
+          putStrLn "Yesod app is shutdown"
+
+tidStoreNum :: Word32
+tidStoreNum = 1
+
+modifyStoredIORef :: Store (IORef a) -> (a -> IO a) -> IO ()
+modifyStoredIORef store f = withStore store $ \ref -> do
+    v <- readIORef ref
+    f v >>= writeIORef ref
+{-# START_FILE app/main.hs #-}
+import Prelude (IO)
+import Application (appMain)
+
+main :: IO ()
+main = appMain
+{-# START_FILE bin/development #-}
+#!/bin/sh
+docker_run() {
+  exec docker run \
+    --rm \
+    --net host \
+    --volume "$PWD":/src \
+    --volume "$PWD"/docker/bin:/home/dev/.local/bin \
+    --volume "$PWD"/docker/stack:/home/dev/.stack \
+    --volume "$PWD"/docker/stack-work:/src/.stack-work "$@"
+}
+
+if [ -t 0 ] && [ -t 1 ]; then
+  docker_run \
+    --interactive \
+    --tty {{github-username}}/{{name}}-development "$@"
+else
+  docker_run {{github-username}}/{{name}}-development "$@"
+fi
+{-# START_FILE bin/stack #-}
+#!/bin/sh
+exec bin/development stack "$@"
+{-# START_FILE config/favicon.ico #-}
+{-# START_FILE config/models #-}
+User
+  email Text
+  UniqueUser email
+{-# START_FILE config/robots.txt #-}
+User-agent: *
+{-# START_FILE config/routes #-}
+/static StaticR Static appStatic
+
+/favicon.ico FaviconR GET
+/robots.txt RobotsR GET
+
+/ RootR GET
+{-# START_FILE config/settings.yml #-}
+approot: "_env:APPROOT:http://localhost:3000"
+command-timeout: "_env:COMMAND_TIMEOUT:300"
+database-pool-size: "_env:PGPOOLSIZE:10" # use conventional variable
+database-url: "_env:DATABASE_URL:postgres://{{name}}:{{name}}@localhost:5432/{{name}}"
+host: "_env:HOST:*4" # any IPv4 host
+ip-from-header: "_env:IP_FROM_HEADER:false"
+log-level: "_env:LOG_LEVEL:info"
+mutable-static: "_env:MUTABLE_STATIC:false"
+port: "_env:PORT:3000"
+{-# START_FILE docker/bin/.gitkeep #-}
+{-# START_FILE docker/Dockerfile.development #-}
+FROM fpco/stack-build:lts
+MAINTAINER {{author-name}} <{{author-email}}>
+
+ENV LANG en_US.UTF-8
+
+RUN mkdir -p /src
+WORKDIR /src
+
+ARG DEV_USER_ID
+RUN useradd --create-home --uid $DEV_USER_ID dev
+USER dev
+
+ENV HOME /home/dev
+ENV PATH /home/dev/.local/bin:$PATH
+
+ENTRYPOINT []
+CMD ["sh"]
+{-# START_FILE docker/Dockerfile.production #-}
+FROM fpco/stack-run:lts
+MAINTAINER {{author-name}} <{{author-email}}>
+
+ENV LANG en_US.UTF-8
+
+RUN mkdir -p /app
+WORKDIR /app
+
+# Executable(s)
+COPY docker/bin/{{name}} /app/{{name}}
+
+# Support resources
+COPY config /app/config
+COPY static /app/static
+
+RUN useradd app
+USER app
+
+ENTRYPOINT []
+CMD ["/app/{{name}}"]
+{-# START_FILE .dockerignore #-}
+*
+
+!docker/bin/{{name}}
+
+!config
+!static
+{-# START_FILE docker/stack/.gitkeep #-}
+{-# START_FILE docker/stack-work/.gitkeep #-}
+{-# START_FILE .env #-}
+LOG_LEVEL=debug
+MUTABLE_STATIC=true
+RELOAD_TEMPLATES=true
+{-# START_FILE .env.test #-}
+DATABASE_URL=postgres://{{name}}:{{name}}@localhost:5432/{{name}}_test
+LOG_LEVEL=error
+{-# START_FILE .ghci #-}
+:set -DDEVELOPMENT
+:set -XCPP
+:set -XGADTs
+:set -XGeneralizedNewtypeDeriving
+:set -XMultiParamTypeClasses
+:set -XNoImplicitPrelude
+:set -XOverloadedStrings
+:set -XQuasiQuotes
+:set -XRecordWildCards
+:set -XTemplateHaskell
+:set -XTypeFamilies
+{-# START_FILE .gitignore #-}
+# LoadEnv
+.env*
+!.env.test
+
+# Stack/Yesod
+.stack-work
+config/client_session_key.aes
+dist
+static/combined/
+static/tmp/
+yesod-devel
+
+# Docker
+docker/bin/*
+!docker/bin/.gitkeep
+docker/stack/*
+!docker/stack/.gitkeep
+docker/stack-work/*
+!docker/stack-work/.gitkeep
+{-# START_FILE LICENSE #-}
+Copyright (c) {{copyright}}
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+{-# START_FILE Makefile #-}
+.PHONY: setup development production repl
+
+DEV_USER_ID ?= $(shell id -u)
+
+setup: development
+	createdb {{name}}
+	createdb {{name}}_test
+	echo \
+	  "CREATE USER {{name}} WITH PASSWORD '{{name}}';" \
+	  " GRANT ALL PRIVILEGES ON DATABASE {{name}} TO {{name}}; " \
+	  " GRANT ALL PRIVILEGES ON DATABASE {{name}}_test TO {{name}};" |\
+	  psql template1
+	# work around stack new limitations
+	chmod +x bin/*
+	mv -v stack.yaml{.in,}
+	bin/stack setup
+	bin/stack build --dependencies-only --test
+
+development:
+	docker build \
+	  --build-arg DEV_USER_ID=$(DEV_USER_ID) \
+	  --tag {{github-username}}/{{name}}-development \
+	  --file docker/Dockerfile.development .
+
+production:
+	bin/stack install
+	docker build \
+	  --tag {{github-username}}/{{name}} \
+	  --file docker/Dockerfile.production .
+
+repl:
+	bin/stack repl --ghc-options="-DDEVELOPMENT -O0 -fobject-code"
+{-# START_FILE {{name}}.cabal #-}
+name:                   {{name}}
+version:                0.0.0
+cabal-version:          >= 1.8
+build-type:             Simple
+
+flag dev
+    description:        Turn auto-reload templates.
+    default:            False
+
+flag library-only
+    description:        Build for use with "yesod devel"
+    default:            False
+
+library
+    hs-source-dirs:     src, app
+    exposed-modules:    Application
+                        Foundation
+                        Import
+                        Import.NoFoundation
+                        Model
+                        Settings
+                        Settings.StaticFiles
+                        Handler.Common
+                        Handler.Root
+
+    if flag(dev) || flag(library-only)
+        cpp-options:    -DDEVELOPMENT
+        ghc-options:    -Wall -Werror -fwarn-tabs -O0
+    else
+        ghc-options:    -Wall -Werror -fwarn-tabs -O2
+
+    extensions:         CPP
+                        GADTs
+                        GeneralizedNewtypeDeriving
+                        MultiParamTypeClasses
+                        NoImplicitPrelude
+                        OverloadedStrings
+                        QuasiQuotes
+                        RecordWildCards
+                        TemplateHaskell
+                        TypeFamilies
+
+    build-depends:      base
+                      , aeson
+                      , bytestring
+                      , classy-prelude
+                      , classy-prelude-yesod
+                      , fast-logger
+                      , file-embed
+                      , heroku-persistent
+                      , hjsmin
+                      , load-env
+                      , monad-logger
+                      , persistent
+                      , persistent-postgresql
+                      , shakespeare
+                      , template-haskell
+                      , text
+                      , wai
+                      , wai-extra
+                      , warp
+                      , yaml
+                      , yesod
+                      , yesod-core
+                      , yesod-static
+
+executable              tee-io
+    if flag(library-only)
+        buildable:      False
+
+    main-is:            main.hs
+    hs-source-dirs:     app
+    build-depends:      base
+                      , {{name}}
+
+    ghc-options:       -Wall -Werror -threaded -O2 -rtsopts -with-rtsopts=-N
+
+test-suite test
+    type:               exitcode-stdio-1.0
+    main-is:            Spec.hs
+    hs-source-dirs:     test
+    ghc-options:        -Wall -Werror
+
+    extensions:         CPP
+                        GADTs
+                        GeneralizedNewtypeDeriving
+                        MultiParamTypeClasses
+                        NoImplicitPrelude
+                        OverloadedStrings
+                        QuasiQuotes
+                        RecordWildCards
+                        TemplateHaskell
+                        TypeFamilies
+
+    build-depends:      base
+                      , {{name}}
+                      , hspec
+                      , hspec-expectations-lifted
+                      , aeson
+                      , classy-prelude
+                      , http-types
+                      , load-env
+                      , persistent
+                      , shakespeare
+                      , wai-extra
+                      , yesod
+                      , yesod-core
+                      , yesod-persistent
+                      , yesod-test
+{-# START_FILE README.md #-}
+# Example
+
+Example yesod project
+
+## Tasks
+
+- `make development`
+
+  Build the development docker image.
+
+- `make setup`
+
+  Create the development and test databases, install project dependencies.
+
+- `make server`
+
+  Run a local development server.
+
+- `make repl`
+
+  Open a REPL with the application loaded.
+
+- `make test`
+
+  Run tests
+
+- `make release`
+
+  Deploy Heroku's docker registry.
+{-# START_FILE src/Application.hs #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+module Application
+    ( appMain
+    , develMain
+    , makeFoundation
+    , makeLogWare
+    , getApplicationRepl
+    , shutdownApp
+    , handler
+    , db
+    ) where
+
+import Import
+
+import Handler.Common
+import Handler.Root
+
+import Control.Monad.Logger (liftLoc, runLoggingT)
+import Database.Persist.Postgresql
+    ( createPostgresqlPool
+    , pgConnStr
+    , pgPoolSize
+    , runSqlPool
+    )
+import Language.Haskell.TH.Syntax (qLocation)
+import LoadEnv (loadEnv)
+import Network.Wai (Middleware)
+import Network.Wai.Handler.Warp
+    ( Settings
+    , defaultSettings
+    , defaultShouldDisplayException
+    , runSettings
+    , setHost
+    , setOnException
+    , setPort
+    , getPort
+    )
+import Network.Wai.Middleware.RequestLogger
+    ( Destination(Callback, Logger)
+    , IPAddrSource(..)
+    , OutputFormat(..)
+    , destination
+    , mkRequestLogger
+    , outputFormat
+    )
+import System.Log.FastLogger
+    ( defaultBufSize
+    , newStdoutLoggerSet
+    , toLogStr
+    )
+
+import qualified Data.Text as T
+
+mkYesodDispatch "App" resourcesApp
+
+makeFoundation :: AppSettings -> IO App
+makeFoundation appSettings = do
+    appHttpManager <- newManager
+    appLogger <- newStdoutLoggerSet defaultBufSize >>= makeYesodLogger
+    appStatic <-
+        (if appMutableStatic appSettings then staticDevel else static)
+        (appStaticDir appSettings)
+
+    -- Bootstrap a log function to use when creating the connection pool
+    let mkFoundation appConnPool = App{..}
+        tempFoundation = mkFoundation $ error "connPool forced in tempFoundation"
+        logFunc = messageLoggerSource tempFoundation appLogger
+
+    pool <- flip runLoggingT logFunc $ createPostgresqlPool
+        (pgConnStr  $ appDatabaseConf appSettings)
+        (pgPoolSize $ appDatabaseConf appSettings)
+
+    -- Perform database migrations
+    runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
+
+    -- Output settings at startup
+    runLoggingT ($(logInfo) $ "settings " <> T.pack (show appSettings)) logFunc
+
+    return $ mkFoundation pool
+
+makeApplication :: App -> IO Application
+makeApplication foundation = do
+    logWare <- makeLogWare foundation
+    appPlain <- toWaiAppPlain foundation
+    return $ logWare $ defaultMiddlewaresNoLogging appPlain
+
+makeLogWare :: App -> IO Middleware
+makeLogWare foundation = mkRequestLogger def
+    { outputFormat = if appSettings foundation `allowsLevel` LevelDebug
+        then Detailed True
+        else Apache apacheIpSource
+    , destination = if appSettings foundation `allowsLevel` LevelInfo
+        then Logger $ loggerSet $ appLogger foundation
+        else Callback $ \_ -> return ()
+    }
+  where
+    apacheIpSource = if appIpFromHeader $ appSettings foundation
+        then FromFallback
+        else FromSocket
+
+warpSettings :: App -> Settings
+warpSettings foundation =
+    setPort (appPort $ appSettings foundation) $
+    setHost (appHost $ appSettings foundation) $
+    setOnException (\_req e ->
+        when (defaultShouldDisplayException e) $ messageLoggerSource
+            foundation
+            (appLogger foundation)
+            $(qLocation >>= liftLoc)
+            "yesod"
+            LevelError
+            (toLogStr $ "Exception from Warp: " ++ show e))
+      defaultSettings
+
+getAppSettings :: IO AppSettings
+getAppSettings = do
+    loadEnv
+    loadYamlSettings [configSettingsYml] [] useEnv
+
+develMain :: IO ()
+develMain = develMainHelper $ do
+    settings <- getAppSettings
+    foundation <- makeFoundation settings
+    wsettings <- getDevSettings $ warpSettings foundation
+    app <- makeApplication foundation
+    return (wsettings, app)
+
+appMain :: IO ()
+appMain = do
+    settings <- getAppSettings
+    foundation <- makeFoundation settings
+    app <- makeApplication foundation
+
+    runSettings (warpSettings foundation) app
+
+--------------------------------------------------------------------------------
+-- Functions for the REPL
+--------------------------------------------------------------------------------
+
+getApplicationRepl :: IO (Int, App, Application)
+getApplicationRepl = do
+    settings <- getAppSettings
+    foundation <- makeFoundation settings
+    wsettings <- getDevSettings $ warpSettings foundation
+    app1 <- makeApplication foundation
+    return (getPort wsettings, foundation, app1)
+
+shutdownApp :: App -> IO ()
+shutdownApp _ = return ()
+
+handler :: Handler a -> IO a
+handler h = getAppSettings >>= makeFoundation >>= flip unsafeHandler h
+
+db :: ReaderT SqlBackend Handler a -> IO a
+db = handler . runDB
+{-# START_FILE src/Foundation.hs #-}
+module Foundation where
+
+import Import.NoFoundation
+
+import Database.Persist.Sql (ConnectionPool, runSqlPool)
+import Text.Hamlet (hamletFile)
+import Text.Jasmine (minifym)
+import Yesod.Core.Types (Logger)
+import Yesod.Default.Util (addStaticContentExternal)
+
+import qualified Yesod.Core.Unsafe as Unsafe
+
+data App = App
+    { appSettings :: AppSettings
+    , appStatic :: Static
+    , appConnPool :: ConnectionPool
+    , appHttpManager :: Manager
+    , appLogger :: Logger
+    }
+
+instance HasHttpManager App where
+    getHttpManager = appHttpManager
+
+mkYesodData "App" $(parseRoutesFile "config/routes")
+
+type Form x = Html -> MForm (HandlerT App IO) (FormResult x, Widget)
+
+instance Yesod App where
+    approot = ApprootMaster $ appRoot . appSettings
+
+    makeSessionBackend _ = Just <$>
+        defaultClientSessionBackend 120 "config/client_session_key.aes"
+
+    defaultLayout widget = do
+        mmsg <- getMessage
+        pc <- widgetToPageContent $ do
+            addStylesheet $ StaticR css_screen_css
+            $(widgetFile "default-layout")
+
+        withUrlRenderer $(hamletFile "templates/default-layout-wrapper.hamlet")
+
+    addStaticContent ext mime content = do
+        master <- getYesod
+        let staticDir = appStaticDir $ appSettings master
+        addStaticContentExternal
+            minifym
+            genFileName
+            staticDir
+            (StaticR . flip StaticRoute [])
+            ext
+            mime
+            content
+      where
+        genFileName lbs = "autogen-" ++ base64md5 lbs
+
+    shouldLog App{..} _source = (appSettings `allowsLevel`)
+
+    makeLogger = return . appLogger
+
+instance YesodPersist App where
+    type YesodPersistBackend App = SqlBackend
+    runDB action = do
+        master <- getYesod
+        runSqlPool action $ appConnPool master
+
+instance YesodPersistRunner App where
+    getDBRunner = defaultGetDBRunner appConnPool
+
+instance RenderMessage App FormMessage where
+    renderMessage _ _ = defaultFormMessage
+
+unsafeHandler :: App -> Handler a -> IO a
+unsafeHandler = Unsafe.fakeHandlerGetLogger appLogger
+{-# START_FILE src/Handler/Common.hs #-}
+module Handler.Common where
+
+import Import
+
+import Data.FileEmbed (embedFile)
+
+getFaviconR :: Handler TypedContent
+getFaviconR = return
+    $ TypedContent "image/x-icon"
+    $ toContent $(embedFile "config/favicon.ico")
+
+getRobotsR :: Handler TypedContent
+getRobotsR = return
+    $ TypedContent typePlain
+    $ toContent $(embedFile "config/robots.txt")
+{-# START_FILE src/Handler/Root.hs #-}
+module Handler.Root where
+
+import Import
+
+getRootR :: Handler Html
+getRootR = defaultLayout $ do
+    setTitle "{{name}}"
+    $(widgetFile "root")
+{-# START_FILE src/Import.hs #-}
+module Import
+    ( module Import
+    ) where
+
+import Foundation as Import
+import Import.NoFoundation as Import
+{-# START_FILE src/Import/NoFoundation.hs #-}
+module Import.NoFoundation
+    ( module Import
+    ) where
+
+import Model as Import
+import Settings as Import
+import Settings.StaticFiles  as Import
+
+import ClassyPrelude.Yesod as Import
+import Yesod.Core.Types as Import (loggerSet)
+import Yesod.Default.Config2 as Import
+{-# START_FILE src/Model.hs #-}
+module Model where
+
+import ClassyPrelude.Yesod
+import Database.Persist.Quasi
+
+share [mkPersist sqlSettings, mkMigrate "migrateAll"]
+    $(persistFileWith lowerCaseSettings "config/models")
+{-# START_FILE src/Settings.hs #-}
+module Settings where
+
+import ClassyPrelude.Yesod
+import Control.Exception (throw)
+import Data.Aeson (Result(..), fromJSON, withObject)
+import Data.FileEmbed (embedFile)
+import Data.Yaml (decodeEither')
+import Database.Persist.Postgresql (PostgresConf(..))
+import Language.Haskell.TH.Syntax (Exp, Q)
+import Network.Wai.Handler.Warp (HostPreference)
+import Web.Heroku.Persist.Postgresql (fromDatabaseUrl)
+import Yesod.Default.Config2 (applyEnvValue, configSettingsYml)
+import Yesod.Default.Util
+#if DEVELOPMENT
+    (widgetFileReload)
+#else
+    (widgetFileNoReload)
+#endif
+
+import qualified Data.Text as T
+import qualified Data.ByteString.Char8 as C8
+
+data AppSettings = AppSettings
+    { appStaticDir :: String
+    , appDatabaseConf :: PostgresConf
+    , appRoot :: Text
+    , appHost :: HostPreference
+    , appPort :: Int
+    , appIpFromHeader :: Bool
+    , appLogLevel :: LogLevel
+    , appMutableStatic :: Bool
+    }
+
+instance Show AppSettings where
+    show AppSettings{..} = concat
+        [ "log_level=", show appLogLevel
+        , " host=", show appHost
+        , " port=", show appPort
+        , " root=", show appRoot
+        , " db=[", C8.unpack $ pgConnStr appDatabaseConf, "]"
+        ]
+
+instance FromJSON AppSettings where
+    parseJSON = withObject "AppSettings" $ \o -> do
+        appDatabaseConf <- fromDatabaseUrl
+            <$> o .: "database-pool-size"
+            <*> o .: "database-url"
+        appRoot <- o .: "approot"
+        appHost <- fromString <$> o .: "host"
+        appPort <- o .: "port"
+        appIpFromHeader <- o .: "ip-from-header"
+        appLogLevel <- parseLogLevel <$> o .: "log-level"
+        appMutableStatic <- o .: "mutable-static"
+
+        -- This value is needed in a pure context, and so can't read from ENV.
+        -- It also doesn't differ between environments, so we might as well
+        -- harcode it.
+        let appStaticDir = "static"
+
+        return AppSettings{..}
+
+      where
+        parseLogLevel :: Text -> LogLevel
+        parseLogLevel t = case T.toLower t of
+            "debug" -> LevelDebug
+            "info" -> LevelInfo
+            "warn" -> LevelWarn
+            "error" -> LevelError
+            _ -> LevelOther t
+
+allowsLevel :: AppSettings -> LogLevel -> Bool
+allowsLevel AppSettings{..} = (>= appLogLevel)
+
+widgetFile :: String -> Q Exp
+widgetFile =
+#if DEVELOPMENT
+    widgetFileReload
+#else
+    widgetFileNoReload
+#endif
+    def
+
+configSettingsYmlBS :: ByteString
+configSettingsYmlBS = $(embedFile configSettingsYml)
+
+configSettingsYmlValue :: Value
+configSettingsYmlValue = either throw id $ decodeEither' configSettingsYmlBS
+
+compileTimeAppSettings :: AppSettings
+compileTimeAppSettings =
+    case fromJSON $ applyEnvValue False mempty configSettingsYmlValue of
+        Error e -> error e
+        Success settings -> settings
+{-# START_FILE src/Settings/StaticFiles.hs #-}
+module Settings.StaticFiles where
+
+import Settings (appStaticDir, compileTimeAppSettings)
+
+import Yesod.Static (staticFiles)
+
+staticFiles (appStaticDir compileTimeAppSettings)
+{-# START_FILE stack.yaml.in #-}
+resolver: lts-6.5
+packages:
+- '.'
+extra-deps:
+- heroku-0.1.2.3
+- heroku-persistent-0.2.0
+- hspec-expectations-lifted-0.5.0
+- load-env-0.1.1
+{-# START_FILE static/css/screen.css #-}
+{-# START_FILE templates/default-layout.hamlet #-}
+$maybe msg <- mmsg
+  <div #message>#{msg}
+^{widget}
+{-# START_FILE templates/default-layout-wrapper.hamlet #-}
+$newline never
+\<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+
+    <title>#{pageTitle pc}
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+
+    ^{pageHead pc}
+  <body>
+    ^{pageBody pc}
+{-# START_FILE templates/root.hamlet #-}
+<h1>
+  Example
+
+<p>
+  Hello world!
+{-# START_FILE test/Handler/RootSpec.hs #-}
+module Handler.RootSpec
+    ( main
+    , spec
+    ) where
+
+import SpecHelper
+
+main :: IO ()
+main = hspec spec
+
+spec :: Spec
+spec = withApp $
+    it "loads successfully" $ do
+        get RootR
+        statusIs 200
+{-# START_FILE test/SpecHelper.hs #-}
+module SpecHelper
+    ( module SpecHelper
+    , module X
+    ) where
+
+import Application (makeFoundation, makeLogWare)
+
+import Database.Persist.Sql
+    ( SqlBackend
+    , SqlPersistM
+    , connEscapeName
+    , rawExecute
+    , rawSql
+    , runSqlPersistMPool
+    , unSingle
+    )
+import LoadEnv (loadEnvFrom)
+import Yesod.Default.Config2 (loadYamlSettings, useEnv)
+
+import Foundation as X
+import Model as X
+
+import ClassyPrelude as X
+import Data.Aeson as X
+import Database.Persist as X hiding (get, delete, deleteBy)
+import Network.HTTP.Types as X
+import Network.Wai.Test as X (SResponse(..))
+import Test.Hspec as X hiding
+    ( expectationFailure
+    , shouldBe
+    , shouldSatisfy
+    , shouldContain
+    , shouldMatchList
+    , shouldReturn
+    )
+import Test.Hspec.Expectations.Lifted as X
+import Text.Shakespeare.Text as X (st)
+import Yesod.Persist as X (getBy404)
+import Yesod.Test as X
+
+withApp :: SpecWith (TestApp App) -> Spec
+withApp = before $ do
+    loadEnvFrom ".env.test"
+
+    settings <- loadYamlSettings
+        ["config/settings.yml"]
+        []
+        useEnv
+
+    app <- makeFoundation settings
+    wipeDB app
+    logWare <- liftIO $ makeLogWare app
+    return (app, logWare)
+
+runDB :: SqlPersistM a -> YesodExample App a
+runDB query = do
+    app <- getTestYesod
+    liftIO $ runDBWithApp app query
+
+runDBWithApp :: App -> SqlPersistM a -> IO a
+runDBWithApp app query = runSqlPersistMPool query (appConnPool app)
+
+wipeDB :: App -> IO ()
+wipeDB app = runDBWithApp app $ do
+    tables <- getTables
+    sqlBackend <- ask
+
+    let escapedTables = map (connEscapeName sqlBackend . DBName) tables
+        query = "TRUNCATE TABLE " ++ intercalate ", " escapedTables
+    rawExecute query []
+
+getTables :: MonadIO m => ReaderT SqlBackend m [Text]
+getTables = do
+    tables <- rawSql [st|
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public';
+    |] []
+
+    return $ map unSingle tables
+{-# START_FILE test/Spec.hs #-}
+{-# OPTIONS_GHC -F -pgmF hspec-discover #-}
