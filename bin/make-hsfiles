@@ -18,4 +18,5 @@ while read -r file; do
   printf "Adding %s to %s...\n" "$relative" "$dest"
   printf "{-# START_FILE %s #-}\n" "$relative" >> "$dest"
   cat "$file" >> "$dest"
+  echo >> "$dest"
 done < "$file_list"

@@ -5,6 +5,7 @@ import Prelude (IO)
 
 main :: IO ()
 main = develMain
+
 {-# START_FILE app/DevelMain.hs #-}
 module DevelMain where
 
@@ -67,12 +68,14 @@ modifyStoredIORef :: Store (IORef a) -> (a -> IO a) -> IO ()
 modifyStoredIORef store f = withStore store $ \ref -> do
     v <- readIORef ref
     f v >>= writeIORef ref
+
 {-# START_FILE app/main.hs #-}
 import Prelude (IO)
 import Application (appMain)
 
 main :: IO ()
 main = appMain
+
 {-# START_FILE bin/development #-}
 #!/bin/sh
 docker_run() {
@@ -92,16 +95,21 @@ if [ -t 0 ] && [ -t 1 ]; then
 else
   docker_run {{github-username}}/{{name}}-development "$@"
 fi
+
 {-# START_FILE bin/stack #-}
 #!/bin/sh
 exec bin/development stack "$@"
+
 {-# START_FILE config/favicon.ico #-}
+
 {-# START_FILE config/models #-}
 User
   email Text
   UniqueUser email
+
 {-# START_FILE config/robots.txt #-}
 User-agent: *
+
 {-# START_FILE config/routes #-}
 /static StaticR Static appStatic
 
@@ -109,6 +117,7 @@ User-agent: *
 /robots.txt RobotsR GET
 
 / RootR GET
+
 {-# START_FILE config/settings.yml #-}
 approot: "_env:APPROOT:http://localhost:3000"
 command-timeout: "_env:COMMAND_TIMEOUT:300"
@@ -119,7 +128,9 @@ ip-from-header: "_env:IP_FROM_HEADER:false"
 log-level: "_env:LOG_LEVEL:info"
 mutable-static: "_env:MUTABLE_STATIC:false"
 port: "_env:PORT:3000"
+
 {-# START_FILE docker/bin/.gitkeep #-}
+
 {-# START_FILE docker/Dockerfile.development #-}
 FROM fpco/stack-build:lts
 MAINTAINER {{author-name}} <{{author-email}}>
@@ -138,6 +149,7 @@ ENV PATH /home/dev/.local/bin:$PATH
 
 ENTRYPOINT []
 CMD ["sh"]
+
 {-# START_FILE docker/Dockerfile.production #-}
 FROM fpco/stack-run:lts
 MAINTAINER {{author-name}} <{{author-email}}>
@@ -159,6 +171,7 @@ USER app
 
 ENTRYPOINT []
 CMD ["/app/{{name}}"]
+
 {-# START_FILE .dockerignore #-}
 *
 
@@ -166,15 +179,19 @@ CMD ["/app/{{name}}"]
 
 !config
 !static
+
 {-# START_FILE docker/stack/.gitkeep #-}
+
 {-# START_FILE docker/stack-work/.gitkeep #-}
+
 {-# START_FILE .env #-}
 LOG_LEVEL=debug
 MUTABLE_STATIC=true
-RELOAD_TEMPLATES=true
+
 {-# START_FILE .env.test #-}
 DATABASE_URL=postgres://{{name}}:{{name}}@localhost:5432/{{name}}_test
 LOG_LEVEL=error
+
 {-# START_FILE .ghci #-}
 :set -DDEVELOPMENT
 :set -XCPP
@@ -187,6 +204,7 @@ LOG_LEVEL=error
 :set -XRecordWildCards
 :set -XTemplateHaskell
 :set -XTypeFamilies
+
 {-# START_FILE .gitignore #-}
 # LoadEnv
 .env*
@@ -207,6 +225,7 @@ docker/stack/*
 !docker/stack/.gitkeep
 docker/stack-work/*
 !docker/stack-work/.gitkeep
+
 {-# START_FILE LICENSE #-}
 Copyright (c) {{copyright}}
 
@@ -227,6 +246,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
 {-# START_FILE Makefile #-}
 .PHONY: setup development production repl
 
@@ -260,6 +280,7 @@ production:
 
 repl:
 	bin/stack repl --ghc-options="-DDEVELOPMENT -O0 -fobject-code"
+
 {-# START_FILE {{name}}.cabal #-}
 name:                   {{name}}
 version:                0.0.0
@@ -370,6 +391,7 @@ test-suite test
                       , yesod-core
                       , yesod-persistent
                       , yesod-test
+
 {-# START_FILE README.md #-}
 # Example
 
@@ -400,6 +422,7 @@ Example yesod project
 - `make release`
 
   Deploy Heroku's docker registry.
+
 {-# START_FILE src/Application.hs #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Application
@@ -556,6 +579,7 @@ handler h = getAppSettings >>= makeFoundation >>= flip unsafeHandler h
 
 db :: ReaderT SqlBackend Handler a -> IO a
 db = handler . runDB
+
 {-# START_FILE src/Foundation.hs #-}
 module Foundation where
 
@@ -630,6 +654,7 @@ instance RenderMessage App FormMessage where
 
 unsafeHandler :: App -> Handler a -> IO a
 unsafeHandler = Unsafe.fakeHandlerGetLogger appLogger
+
 {-# START_FILE src/Handler/Common.hs #-}
 module Handler.Common where
 
@@ -646,6 +671,7 @@ getRobotsR :: Handler TypedContent
 getRobotsR = return
     $ TypedContent typePlain
     $ toContent $(embedFile "config/robots.txt")
+
 {-# START_FILE src/Handler/Root.hs #-}
 module Handler.Root where
 
@@ -655,6 +681,7 @@ getRootR :: Handler Html
 getRootR = defaultLayout $ do
     setTitle "{{name}}"
     $(widgetFile "root")
+
 {-# START_FILE src/Import.hs #-}
 module Import
     ( module Import
@@ -662,6 +689,7 @@ module Import
 
 import Foundation as Import
 import Import.NoFoundation as Import
+
 {-# START_FILE src/Import/NoFoundation.hs #-}
 module Import.NoFoundation
     ( module Import
@@ -674,6 +702,7 @@ import Settings.StaticFiles  as Import
 import ClassyPrelude.Yesod as Import
 import Yesod.Core.Types as Import (loggerSet)
 import Yesod.Default.Config2 as Import
+
 {-# START_FILE src/Model.hs #-}
 module Model where
 
@@ -682,6 +711,7 @@ import Database.Persist.Quasi
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"]
     $(persistFileWith lowerCaseSettings "config/models")
+
 {-# START_FILE src/Settings.hs #-}
 module Settings where
 
@@ -776,6 +806,7 @@ compileTimeAppSettings =
     case fromJSON $ applyEnvValue False mempty configSettingsYmlValue of
         Error e -> error e
         Success settings -> settings
+
 {-# START_FILE src/Settings/StaticFiles.hs #-}
 module Settings.StaticFiles where
 
@@ -784,6 +815,7 @@ import Settings (appStaticDir, compileTimeAppSettings)
 import Yesod.Static (staticFiles)
 
 staticFiles (appStaticDir compileTimeAppSettings)
+
 {-# START_FILE stack.yaml.in #-}
 resolver: lts-6.5
 packages:
@@ -793,11 +825,14 @@ extra-deps:
 - heroku-persistent-0.2.0
 - hspec-expectations-lifted-0.5.0
 - load-env-0.1.1
+
 {-# START_FILE static/css/screen.css #-}
+
 {-# START_FILE templates/default-layout.hamlet #-}
 $maybe msg <- mmsg
   <div #message>#{msg}
 ^{widget}
+
 {-# START_FILE templates/default-layout-wrapper.hamlet #-}
 $newline never
 \<!doctype html>
@@ -813,12 +848,14 @@ $newline never
     ^{pageHead pc}
   <body>
     ^{pageBody pc}
+
 {-# START_FILE templates/root.hamlet #-}
 <h1>
   Example
 
 <p>
   Hello world!
+
 {-# START_FILE test/Handler/RootSpec.hs #-}
 module Handler.RootSpec
     ( main
@@ -835,6 +872,7 @@ spec = withApp $
     it "loads successfully" $ do
         get RootR
         statusIs 200
+
 {-# START_FILE test/SpecHelper.hs #-}
 module SpecHelper
     ( module SpecHelper
@@ -916,5 +954,6 @@ getTables = do
     |] []
 
     return $ map unSingle tables
+
 {-# START_FILE test/Spec.hs #-}
 {-# OPTIONS_GHC -F -pgmF hspec-discover #-}
