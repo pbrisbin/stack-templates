@@ -846,7 +846,7 @@ $newline never
 
 {-# START_FILE templates/root.hamlet #-}
 <h1>
-  Example
+  {{name}}
 
 <p>
   Hello world!
