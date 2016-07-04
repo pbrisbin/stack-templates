@@ -264,6 +264,7 @@ setup: development
 	chmod +x bin/*
 	mv -v stack.yaml{.in,}
 	bin/stack setup
+	bin/stack install yesod-bin
 	bin/stack build --dependencies-only --test
 
 development:
