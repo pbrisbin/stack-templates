@@ -349,7 +349,7 @@ library
                       , yesod-core
                       , yesod-static
 
-executable              tee-io
+executable              {{name}}
     if flag(library-only)
         buildable:      False
 
