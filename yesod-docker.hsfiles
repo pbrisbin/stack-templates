@@ -394,35 +394,29 @@ test-suite test
                       , yesod-test
 
 {-# START_FILE README.md #-}
-# Example
+# {{name}}
 
-Example yesod project
+## Setup
 
-## Tasks
+```
+make setup
+```
 
-- `make development`
+### Development
 
-  Build the development docker image.
+```
+bin/stack repl --ghc-options="-DDEVELOPMENT -O0 -fobject-code"
+bin/stack yesod devel
+bin/stack test
+```
 
-- `make setup`
+### Deployment
 
-  Create the development and test databases, install project dependencies.
-
-- `make server`
-
-  Run a local development server.
-
-- `make repl`
-
-  Open a REPL with the application loaded.
-
-- `make test`
-
-  Run tests
-
-- `make release`
-
-  Deploy Heroku's docker registry.
+```
+make production
+docker tag {{github-username}}/{{name}} registry/{{name}}
+docker push registry/{{name}}
+```
 
 {-# START_FILE src/Application.hs #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
