@@ -7,10 +7,11 @@ My personal stack templates, so far just one.
 This template creates a yesod project with my own preferences and a bunch of
 machinery to develop and deploy via Docker.
 
-```
+```console
 stack new --resolver lts-6.5 --omit-packages \
   myproject https://raw.githubusercontent.com/pbrisbin/stack-templates/master/yesod-docker.hsfiles
 
+cd myproject
 make setup
 
 bin/stack test
