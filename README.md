@@ -1,23 +1,31 @@
 # Stack Templates
 
-My personal stack templates, so far just one.
+My personal stack templates.
 
-## yesod-docker
+## Usage
 
-This template creates a yesod project with my own preferences and a bunch of
-machinery to develop and deploy via Docker.
-
-```console
-stack new --resolver lts-7.2 --omit-packages \
-  myproject https://raw.githubusercontent.com/pbrisbin/stack-templates/master/yesod-docker.hsfiles
-
-cd myproject
-make setup
-
-bin/stack test
-bin/stack exec yesod devel
-
-make production
-docker tag you/myproject registry/myproject
-docker push registry/myproject
 ```
+stack new [<option>, ...] <project> \
+  https://raw.githubusercontent.com/pbrisbin/stack-templates/master/<name>.hsfiles
+```
+
+## Templates
+
+### simple
+
+Simple library-plus-executable.
+
+- Hpack
+- HSpec
+- HLint, StylishHaskell, and Brittany configuration
+- Circle-2.0 CI
+- Makefile
+
+See [Haskell Project Checklist](https://pbrisbin.com/posts/haskell_project_checklist/).
+
+### yesod-docker
+
+**NOTE**: This one is a bit out of date right now, and may not work.
+
+- Yesod with [some updated conventions](https://pbrisbin.com/posts/tee-io_lessons_learned/)
+- Docker-based development and Deployment
