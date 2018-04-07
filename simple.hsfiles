@@ -1,0 +1,239 @@
+{-# START_FILE .circleci/config.yml #-}
+---
+version: 2.0
+
+jobs:
+  build:
+    docker:
+      - image: fpco/stack-build:lts
+    steps:
+      - checkout
+      - run:
+          name: Digest
+          command: |
+            git ls-files | xargs md5sum > digest
+      - restore_cache:
+          keys:
+            - v0-{{ .Branch }}-{{ checksum "digest" }}
+            - v0-{{ .Branch }}-
+            - v0-master-
+      - run:
+          name: Dependencies
+          command: make setup
+      - run:
+          name: Build
+          command: make build
+      - save_cache:
+          key: v2-{{ .Branch }}-{{ checksum "digest" }}
+          paths:
+            - ~/.stack
+            - ./.stack-work
+      - run:
+          name: Test
+          command: make test
+      - run:
+          name: Lint
+          command: make lint
+{-# START_FILE .gitignore #-}
+*.cabal
+.stack-work
+{-# START_FILE .hlint.yaml #-}
+---
+- ignore:
+    name: Redundant do
+    within: spec
+{-# START_FILE .restyled.yaml #-}
+---
+- stylish-haskell
+- brittany
+{-# START_FILE .stylish-haskell.yaml #-}
+steps:
+  - simple_align:
+      cases: false
+      top_level_patterns: false
+      records: false
+  - imports:
+      align: none
+      list_align: after_alias
+      pad_module_names: false
+      long_list_align: new_line_multiline
+      empty_list_align: right_after
+      list_padding: 4
+      separate_lists: false
+      space_surround: false
+  - language_pragmas:
+      style: vertical
+      align: false
+      remove_redundant: true
+  - trailing_whitespace: {}
+columns: 80
+newline: native
+{-# START_FILE CHANGELOG.md #-}
+TODO
+{-# START_FILE LICENSE #-}
+Copyright (c) 2018 {{author-name}} <{{author-email}}>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+{-# START_FILE Makefile #-}
+all: setup build test lint
+
+.PHONY: setup
+setup:
+	stack setup
+	stack build \
+	  --dependencies-only --test --no-run-tests
+	stack install hlint weeder
+
+.PHONY: build
+build:
+	stack build \
+	  --fast --pedantic --test --no-run-tests
+
+.PHONY: test
+test:
+	stack build \
+	  --fast --pedantic --test
+
+.PHONY: lint
+lint:
+	hlint .
+	weeder .
+
+.PHONY: clean
+clean:
+	stack clean
+{-# START_FILE README.md #-}
+# Simple
+
+TODO
+
+## Example
+
+TODO
+
+---
+
+[CHANGELOG](./CHANGELOG.md) | [LICENSE](./LICENSE)
+{-# START_FILE Setup.hs #-}
+import Distribution.Simple
+main = defaultMain
+{-# START_FILE app/Main.hs #-}
+module Main (main) where
+
+main :: IO ()
+main = undefined
+{-# START_FILE brittany.yaml #-}
+---
+conf_debug:
+  dconf_roundtrip_exactprint_only: false
+  dconf_dump_bridoc_simpl_par: false
+  dconf_dump_ast_unknown: false
+  dconf_dump_bridoc_simpl_floating: false
+  dconf_dump_config: false
+  dconf_dump_bridoc_raw: false
+  dconf_dump_bridoc_final: false
+  dconf_dump_bridoc_simpl_alt: false
+  dconf_dump_bridoc_simpl_indent: false
+  dconf_dump_annotations: false
+  dconf_dump_bridoc_simpl_columns: false
+  dconf_dump_ast_full: false
+conf_forward:
+  options_ghc: []
+conf_errorHandling:
+  econf_ExactPrintFallback: ExactPrintFallbackModeInline
+  econf_Werror: false
+  econf_omit_output_valid_check: false
+  econf_produceOutputOnErrors: false
+conf_preprocessor:
+  ppconf_CPPMode: CPPModeAbort
+  ppconf_hackAroundIncludes: false
+conf_version: 1
+conf_layout:
+  lconfig_altChooser:
+    tag: AltChooserBoundedSearch
+    contents: 3
+  lconfig_importColumn: 60
+  lconfig_alignmentLimit: 1
+  lconfig_indentListSpecial: true
+  lconfig_indentAmount: 4
+  lconfig_alignmentBreakOnMultiline: true
+  lconfig_cols: 80
+  lconfig_indentPolicy: IndentPolicyLeft
+  lconfig_indentWhereSpecial: true
+  lconfig_columnAlignMode:
+    tag: ColumnAlignModeDisabled
+    contents: 0.7
+{-# START_FILE package.yaml #-}
+---
+name: {{name}}
+version: '0.1.0.0'
+category: Text
+author: {{author-name}}
+maintainer: {{author-email}}
+copyright: 2018 {{author-name}}
+license: MIT
+github: {{github-username}}/{{name}}
+extra-source-files:
+  - README.md
+  - CHANGELOG.md
+
+dependencies:
+  - base >= 4.7 && <5
+
+ghc-options: -Wall
+
+library:
+  source-dirs: src
+
+executables:
+  {{name}}:
+    main: Main.hs
+    source-dirs: app
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - {{name}}
+
+tests:
+  hspec:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - hspec
+      - {{name}}
+{-# START_FILE src/Simple.hs #-}
+module Simple where
+{-# START_FILE test/SimpleSpec.hs #-}
+module SimpleSpec
+    ( spec
+    ) where
+
+import Simple
+import Test.Hspec
+
+spec :: Spec
+spec = undefined
+{-# START_FILE test/Spec.hs #-}
+{-# OPTIONS_GHC -F -pgmF hspec-discover #-}
