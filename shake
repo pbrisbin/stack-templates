@@ -1,0 +1,27 @@
+#!/usr/bin/env stack
+-- stack runghc --package shake
+module Main (main) where
+
+import Control.Monad (filterM)
+import Development.Shake
+import Development.Shake.FilePath
+import Data.Semigroup ((<>))
+import Data.Traversable (for)
+import Data.List (sort)
+
+main :: IO ()
+main = shakeArgs shakeOptions $ do
+    want ["simple.hsfiles"]
+
+    "*.hsfiles" %> \out -> do
+        let source = "sources" </> dropExtension out
+        Stdout input <- cmd "git" ["ls-files", source]
+        inputFiles <- filterM doesFileExist $ lines input
+        inputContents <- for (sort inputFiles) $ \path -> do
+            let file = makeRelative source path
+            content <- readFile' path
+            pure $ "{-# START_FILE " <> file <> " #-}\n" <> content
+
+        writeFile' out $ unlines inputContents
+
+-- vim: ft=haskell
