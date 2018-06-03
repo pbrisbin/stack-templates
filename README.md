@@ -29,3 +29,19 @@ See [Haskell Project Checklist](https://pbrisbin.com/posts/haskell_project_check
 
 - Yesod with [some updated conventions](https://pbrisbin.com/posts/tee-io_lessons_learned/)
 - Docker-based development and Deployment
+
+## Building Templates
+
+Build any templates that are out of date with `sources/`:
+
+```console
+./shake
+```
+
+**NOTE**: shake won't know about new files, so use `--rebuild`.
+
+Test templates by creating a project from them:
+
+```console
+./shake test
+```
