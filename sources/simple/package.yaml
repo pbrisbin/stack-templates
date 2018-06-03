@@ -1,6 +1,6 @@
 ---
 name: {{name}}
-version: '0.1.0.0'
+version: 0.1.0.0
 category: Text
 author: {{author-name}}
 maintainer: {{author-email}}

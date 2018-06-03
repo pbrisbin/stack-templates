@@ -14,8 +14,13 @@ jobs:
             git ls-files | xargs md5sum > digest
       - restore_cache:
           keys:
-            - v0-{{ .Branch }}-{{ checksum "digest" }}
-            - v0-{{ .Branch }}-
+            # TODO: These lines are supposed to use double-braces, not parens,
+            # but the stack template system chokes on them
+            #
+            # https://circleci.com/docs/2.0/caching/
+            #
+            # - v0-(( .Branch ))-(( checksum "digest" ))
+            # - v0-(( .Branch ))-
             - v0-master-
       - run:
           name: Dependencies
@@ -24,7 +29,12 @@ jobs:
           name: Build
           command: make build
       - save_cache:
-          key: v2-{{ .Branch }}-{{ checksum "digest" }}
+          # TODO: This line is supposed to use double-braces, not parens, but
+          # the stack template system chokes on it.
+          #
+          # https://circleci.com/docs/2.0/caching/
+          #
+          # key: v0-(( .Branch ))-(( checksum "digest" ))
           paths:
             - ~/.stack
             - ./.stack-work
@@ -34,19 +44,26 @@ jobs:
       - run:
           name: Lint
           command: make lint
+
 {-# START_FILE .gitignore #-}
 *.cabal
 .stack-work
+
 {-# START_FILE .hlint.yaml #-}
 ---
 - ignore:
+    name: Reduce duplication
+- ignore:
     name: Redundant do
     within: spec
+
 {-# START_FILE .restyled.yaml #-}
 ---
 - stylish-haskell
 - brittany
+
 {-# START_FILE .stylish-haskell.yaml #-}
+---
 steps:
   - simple_align:
       cases: false
@@ -68,8 +85,10 @@ steps:
   - trailing_whitespace: {}
 columns: 80
 newline: native
+
 {-# START_FILE CHANGELOG.md #-}
 TODO
+
 {-# START_FILE LICENSE #-}
 Copyright (c) 2018 {{author-name}} <{{author-email}}>
 
@@ -90,6 +109,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
 {-# START_FILE Makefile #-}
 all: setup build test lint
 
@@ -118,6 +138,7 @@ lint:
 .PHONY: clean
 clean:
 	stack clean
+
 {-# START_FILE README.md #-}
 # Simple
 
@@ -130,14 +151,17 @@ TODO
 ---
 
 [CHANGELOG](./CHANGELOG.md) | [LICENSE](./LICENSE)
+
 {-# START_FILE Setup.hs #-}
 import Distribution.Simple
 main = defaultMain
+
 {-# START_FILE app/Main.hs #-}
 module Main (main) where
 
 main :: IO ()
 main = undefined
+
 {-# START_FILE brittany.yaml #-}
 ---
 conf_debug:
@@ -179,10 +203,11 @@ conf_layout:
   lconfig_columnAlignMode:
     tag: ColumnAlignModeDisabled
     contents: 0.7
+
 {-# START_FILE package.yaml #-}
 ---
 name: {{name}}
-version: '0.1.0.0'
+version: 0.1.0.0
 category: Text
 author: {{author-name}}
 maintainer: {{author-email}}
@@ -223,8 +248,10 @@ tests:
     dependencies:
       - hspec
       - {{name}}
+
 {-# START_FILE src/Simple.hs #-}
 module Simple where
+
 {-# START_FILE test/SimpleSpec.hs #-}
 module SimpleSpec
     ( spec
@@ -235,5 +262,7 @@ import Test.Hspec
 
 spec :: Spec
 spec = undefined
+
 {-# START_FILE test/Spec.hs #-}
 {-# OPTIONS_GHC -F -pgmF hspec-discover #-}
+

@@ -4,7 +4,7 @@ version: 2.0
 jobs:
   build:
     docker:
-      - image: fpco/stack-build:lts
+      - image: fpco/stack-build:lts-RESOLVER
     steps:
       - checkout
       - run:
@@ -13,8 +13,13 @@ jobs:
             git ls-files | xargs md5sum > digest
       - restore_cache:
           keys:
-            - v0-{{ .Branch }}-{{ checksum "digest" }}
-            - v0-{{ .Branch }}-
+            # TODO: These lines are supposed to use double-braces, not parens,
+            # but the stack template system chokes on them
+            #
+            # https://circleci.com/docs/2.0/caching/
+            #
+            # - v0-(( .Branch ))-(( checksum "digest" ))
+            # - v0-(( .Branch ))-
             - v0-master-
       - run:
           name: Dependencies
@@ -23,7 +28,12 @@ jobs:
           name: Build
           command: make build
       - save_cache:
-          key: v2-{{ .Branch }}-{{ checksum "digest" }}
+          # TODO: This line is supposed to use double-braces, not parens, but
+          # the stack template system chokes on it.
+          #
+          # https://circleci.com/docs/2.0/caching/
+          #
+          # key: v0-(( .Branch ))-(( checksum "digest" ))
           paths:
             - ~/.stack
             - ./.stack-work
