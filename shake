@@ -1,5 +1,5 @@
 #!/usr/bin/env stack
--- stack runghc --package shake
+-- stack runghc --package shake --package directory
 module Main (main) where
 
 import Control.Monad (filterM)
@@ -8,11 +8,20 @@ import Development.Shake.FilePath
 import Data.Semigroup ((<>))
 import Data.Traversable (for)
 import Data.List (sort)
+import System.Directory (makeAbsolute)
+
+templates :: [FilePath]
+templates = ["simple"]
 
 main :: IO ()
 main = shakeArgs shakeOptions $ do
-    want ["simple.hsfiles"]
+    -- By default we build templates
+    want hsfiles
 
+    -- A test target builds projects from the templates
+    phony "test" $ need tests
+
+    -- How to build a single .hsfiles template
     "*.hsfiles" %> \out -> do
         let source = "sources" </> dropExtension out
         Stdout input <- cmd "git" ["ls-files", source]
@@ -23,5 +32,23 @@ main = shakeArgs shakeOptions $ do
             pure $ "{-# START_FILE " <> file <> " #-}\n" <> content
 
         writeFile' out $ unlines inputContents
+
+    -- How to test a single .hsfiles template
+    "tests/*/.state" %> \out -> do
+        let templateName = takeBaseName $ takeDirectory out
+            templatePath = templateName <.> "hsfiles"
+
+        need [templatePath]
+
+        absoluteTemplatePath <- liftIO $ makeAbsolute templatePath
+        cmd_ (Cwd "tests") "rm" ["-r", "-f", templateName]
+        cmd_ (Cwd "tests") "stack" ["new", templateName, absoluteTemplatePath]
+        writeFile' out "" -- record that we've done this
+
+hsfiles :: [FilePath]
+hsfiles = map (<.> "hsfiles") templates
+
+tests :: [FilePath]
+tests = map (\t -> "tests" </> t </> ".state") templates
 
 -- vim: ft=haskell
